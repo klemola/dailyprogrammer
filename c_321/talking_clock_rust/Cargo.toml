@@ -1,0 +1,8 @@
+[package]
+name = "talking_clock_rust"
+version = "0.1.0"
+authors = ["Matias Klemola <matias.klemola@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+easy-shortcuts = "0.3.0"
