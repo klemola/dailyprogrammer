@@ -25,6 +25,7 @@
 
 use easy_shortcuts::traits::*;
 use std::env;
+use std::error::Error;
 use std::process;
 
 fn main() {
@@ -35,52 +36,28 @@ fn main() {
         process::exit(0)
     }
 
-    println!("{}", say(&args[1]))
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-
-    #[test]
-    fn valid_values() {
-        assert_eq!(say(&"00:00".to_string()), "It's twelve am".to_string());
-        assert_eq!(say(&"01:30".to_string()), "It's one thirty am".to_string());
-        assert_eq!(
-            say(&"12:05".to_string()),
-            "It's twelve oh five pm".to_string()
-        );
-        assert_eq!(say(&"14:01".to_string()), "It's two oh one pm".to_string());
-        assert_eq!(
-            say(&"20:29".to_string()),
-            "It's eight twenty nine pm".to_string()
-        );
-        assert_eq!(say(&"21:00".to_string()), "It's nine pm".to_string())
+    match say(&args[1]) {
+        Ok(time_string) => println!("{}", time_string),
+        Err(message) => println!("{}", message),
     }
 }
 
-fn say(time: &String) -> String {
-    let time_values: Vec<u32> = time
-        .split(':')
-        .map(|num_string| num_string.parse::<u32>().unwrap())
-        .collect();
+fn say(time: &str) -> Result<String, Box<Error>> {
+    let (h, m) = parse_time(&time)?;
 
-    let (hour, min_prefix, min, time_period) = match time_values.as_slice() {
-        // Change 24h format into 12h format
-        [h, m] if *h > 12 && *m > 0 && *m < 10 => (h - 12, "oh", *m, "pm"),
-        [h, m] if *h > 12 => (*h - 12, "", *m, "pm"),
-        [h, m] if *h == 12 && *m > 0 && *m < 10 => (*h, "oh", *m, "pm"),
-        [h, m] if *h == 12 => (*h, "", *m, "pm"),
-        // handle sub 10 minutes prefix
-        [h, m] if *h == 0 && *m > 0 && *m < 10 => (12, "oh", *m, "am"),
-        [h, m] if *m > 0 && *m < 10 => (*h, "oh", *m, "am"),
-        // simple variations
-        [h, m] if *h == 0 => (12, "", *m, "am"),
-        [h, m] => (*h, "", *m, "am"),
-        _ => panic!("Invalid time value!"),
+    let (hour, min, time_period) = if h > 12 {
+        (h - 12, m, "pm")
+    } else if h == 0 {
+        (12, m, "am")
+    } else if h == 12 {
+        (h, m, "pm")
+    } else {
+        (h, m, "am")
     };
 
-    format!(
+    let min_prefix = if min > 0 && min < 10 { "oh" } else { "" };
+
+    Ok(format!(
         "It's {} {} {} {}",
         num_to_s(hour),
         min_prefix,
@@ -88,41 +65,66 @@ fn say(time: &String) -> String {
         time_period,
     )
     .split_whitespace()
-    .join(' ')
+    .join(' '))
+}
+
+// Accepts a string in format "hh:mm" where hh and mm are valid values for 24h format
+fn parse_time(time: &str) -> Result<(u32, u32), Box<Error>> {
+    let time_values: Vec<&str> = time.split(':').to_vec();
+    let err = Err(Box::from("Invalid time value"));
+
+    match time_values.len() {
+        2 => {
+            let (hour_string, min_string) = (time_values[0], time_values[1]);
+            let h: u32 = hour_string.parse::<u32>()?;
+            let m: u32 = min_string.parse::<u32>()?;
+
+            if h > 23 || m > 59 {
+                err
+            } else {
+                Ok((h, m))
+            }
+        }
+        _ => err,
+    }
 }
 
 // Format a number between 1 and 59 (inclusive) to a verbal format
 fn num_to_s(num: u32) -> String {
-    let singles = |n| match n {
-        0 => "".to_string(),
-        1 => "one".to_string(),
-        2 => "two".to_string(),
-        3 => "three".to_string(),
-        4 => "four".to_string(),
-        5 => "five".to_string(),
-        6 => "six".to_string(),
-        7 => "seven".to_string(),
-        8 => "eight".to_string(),
-        9 => "nine".to_string(),
-        10 => "ten".to_string(),
-        11 => "eleven".to_string(),
-        12 => "twelve".to_string(),
-        13 => "thirteen".to_string(),
-        14 => "fourteen".to_string(),
-        15 => "fifteen".to_string(),
-        16 => "sixteen".to_string(),
-        17 => "seventeen".to_string(),
-        18 => "eighteen".to_string(),
-        19 => "nineteen".to_string(),
-        _ => "_invalid_".to_string(),
+    let singles = |n| {
+        String::from(match n {
+            0 => "",
+            1 => "one",
+            2 => "two",
+            3 => "three",
+            4 => "four",
+            5 => "five",
+            6 => "six",
+            7 => "seven",
+            8 => "eight",
+            9 => "nine",
+            10 => "ten",
+            11 => "eleven",
+            12 => "twelve",
+            13 => "thirteen",
+            14 => "fourteen",
+            15 => "fifteen",
+            16 => "sixteen",
+            17 => "seventeen",
+            18 => "eighteen",
+            19 => "nineteen",
+            _ => "_invalid_",
+        })
     };
 
-    let tens = |n| match n {
-        2 => "twenty".to_string(),
-        3 => "thirty".to_string(),
-        4 => "forty".to_string(),
-        5 => "fifty".to_string(),
-        _ => "_invalid_".to_string(),
+    let tens = |n| {
+        String::from(match n {
+            2 => "twenty",
+            3 => "thirty",
+            4 => "forty",
+            5 => "fifty",
+            _ => "_invalid_",
+        })
     };
 
     if num < 20 {
@@ -137,7 +139,54 @@ fn num_to_s(num: u32) -> String {
             (4, x) => format!("{} {}", tens(4), singles(x)),
             (5, 0) => tens(5),
             (5, x) => format!("{} {}", tens(5), singles(x)),
-            _ => "_invalid_".to_string(),
+            _ => String::from("_invalid_"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn valid_value_1() -> Result<(), Box<Error>> {
+        let time_string = say(&String::from("00:00"))?;
+        Ok(assert_eq!(time_string, String::from("It's twelve am")))
+    }
+
+    #[test]
+    fn valid_value_2() -> Result<(), Box<Error>> {
+        let time_string = say(&String::from("01:30"))?;
+        Ok(assert_eq!(time_string, String::from("It's one thirty am")))
+    }
+
+    #[test]
+    fn valid_value_3() -> Result<(), Box<Error>> {
+        let time_string = say(&String::from("12:05"))?;
+        Ok(assert_eq!(
+            time_string,
+            String::from("It's twelve oh five pm")
+        ))
+    }
+
+    #[test]
+    fn valid_value_4() -> Result<(), Box<Error>> {
+        let time_string = say(&String::from("14:01"))?;
+        Ok(assert_eq!(time_string, String::from("It's two oh one pm")))
+    }
+
+    #[test]
+    fn valid_value_5() -> Result<(), Box<Error>> {
+        let time_string = say(&String::from("20:29"))?;
+        Ok(assert_eq!(
+            time_string,
+            String::from("It's eight twenty nine pm")
+        ))
+    }
+
+    #[test]
+    fn invalid_input() {
+        assert!(say(&String::from("foobar")).is_err());
+        assert!(say(&String::from("43:22")).is_err());
     }
 }
